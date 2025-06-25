@@ -1,3 +1,4 @@
+this project forked from https://github.com/trudi-group/ipfs-crawler.git
 # Libp2p-Crawler
 
 A crawler for the Kademlia-part of various libp2p networks.
@@ -37,6 +38,10 @@ export LIBP2P_ALLOW_WEAK_RSA_KEYS="" && export LIBP2P_SWARM_FD_LIMIT="10000" && 
 
 One crawl will take 5-10 minutes, depending on your machine.
 
+##使用
+```bash
+./ipfspin.sh output_data_crawls/ipfs/visitedPeers_2025-06-25_03-00-20_UTC.json  10 IPFSCID 
+```
 ### Docker
 
 The image executes `dist/docker_entrypoint.sh` by default, which will set the environment variables and launch the crawler with all arguments provided to it.
