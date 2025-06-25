@@ -38,7 +38,7 @@ export LIBP2P_ALLOW_WEAK_RSA_KEYS="" && export LIBP2P_SWARM_FD_LIMIT="10000" && 
 
 One crawl will take 5-10 minutes, depending on your machine.
 
-##使用
+## Pin File to ipfs node.
 ```bash
 ./ipfspin.sh output_data_crawls/ipfs/visitedPeers_2025-06-25_03-00-20_UTC.json  10 IPFSCID 
 ```
