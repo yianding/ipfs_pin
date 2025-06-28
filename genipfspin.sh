@@ -2,13 +2,18 @@
 
 # --- Usage ---
 # Run this script with the JSON file path as the ONLY argument.
-# The curl_connect_timeout and arg_value will be passed *when out.sh is executed*.
+# The curl_connect_timeout and arg_value will be passed *when ipfspin.sh is executed*.
 # Example: ./generate_dynamic_curls.sh /path/to/your/network_data.json
 #          $0                               $1
 
 # --- Configuration ---
 # Define the output file for curl commands
 OUTPUT_FILE="ipfspin.sh"
+# Define the target port for IPFS API
+TARGET_PORT="5001" 
+# Define a timeout for the port connectivity test (in seconds)
+# This is separate from curl's connect-timeout because it happens BEFORE curl is generated.
+CONNECT_TEST_TIMEOUT=2 
 
 # --- Script Logic ---
 
@@ -39,14 +44,12 @@ echo "#!/bin/bash" > "$OUTPUT_FILE"
 echo "" >> "$OUTPUT_FILE" # Add a newline for readability
 
 echo "--- Starting to extract unique IP addresses from '$JSON_FILE' ---"
-echo "--- Generating 'curl' commands to '$OUTPUT_FILE' ---"
+echo "--- Testing connectivity and generating 'curl' commands to '$OUTPUT_FILE' ---"
 echo "    (Each command in '$OUTPUT_FILE' will use \$1 for timeout and \$2 for arg_value)"
+echo "    (Connectivity test timeout: ${CONNECT_TEST_TIMEOUT}s)"
 
 echo "Command Generation Log:"
 echo "-----------------------------------------------------"
-
-# Define the target port (still needed for URL construction)
-TARGET_PORT="5001" 
 
 # Use process substitution and mapfile to read IPs into an array in the current shell
 mapfile -t UNIQUE_IP_ADDRESSES < <(
@@ -72,26 +75,44 @@ mapfile -t UNIQUE_IP_ADDRESSES < <(
 # Array to store generated curl commands
 declare -a CURL_COMMANDS=()
 commands_generated_count=0
+connected_ips_count=0
+skipped_ips_count=0
 
 # Iterate over the UNIQUE_IP_ADDRESSES array
 for IP_ADDRESS in "${UNIQUE_IP_ADDRESSES[@]}"; do
   # Prepare IP addresses for curl URL construction
   CURL_TARGET_IP="$IP_ADDRESS" 
   
-  # Construct the full curl command string using $1 and $2
-  # These $1 and $2 will be variables when out.sh is executed later
-  GENERATED_COMMAND="curl --connect-timeout \$1 -X POST \"http://${CURL_TARGET_IP}:${TARGET_PORT}/api/v0/pin/add?arg=\$2&progress=false\" &"
-  
-  # Add the generated command to the array
-  CURL_COMMANDS+=("$GENERATED_COMMAND")
-  ((commands_generated_count++)) # Increment counter
-
-  #echo "  Generated command for $IP_ADDRESS: $GENERATED_COMMAND"
-  #echo "      -----------------------------------------------------"
+  echo "  Testing connection to ${CURL_TARGET_IP}:${TARGET_PORT}..."
+  # Test connectivity using nc (netcat)
+  # -z: zero-I/O mode (just scan for listening daemons)
+  # -w: timeout
+  # -v: verbose output (useful for debugging, can be removed)
+  if nc -z -w "${CONNECT_TEST_TIMEOUT}" "${CURL_TARGET_IP}" "${TARGET_PORT}" &> /dev/null; then
+    echo "    ✅ Connected to ${CURL_TARGET_IP}:${TARGET_PORT}. Generating command."
+    # Construct the full curl command string using $1 and $2
+    # These $1 and $2 will be variables when ipfspin.sh is executed later
+    GENERATED_COMMAND="curl --connect-timeout \$1 -X POST \"http://${CURL_TARGET_IP}:${TARGET_PORT}/api/v0/pin/add?arg=\$2&progress=false\" &"
+    
+    # Add the generated command to the array
+    CURL_COMMANDS+=("$GENERATED_COMMAND")
+    ((commands_generated_count++)) # Increment command counter
+    ((connected_ips_count++))      # Increment connected IPs counter
+  else
+    echo "    ❌ Could not connect to ${CURL_TARGET_IP}:${TARGET_PORT}. Skipping."
+    ((skipped_ips_count++)) # Increment skipped IPs counter
+  fi
 done
 
+echo "-----------------------------------------------------"
+echo "Summary of IP processing:"
+echo "  Total unique IPs found: ${#UNIQUE_IP_ADDRESSES[@]}"
+echo "  Successfully connected IPs: ${connected_ips_count}"
+echo "  Skipped (unreachable) IPs: ${skipped_ips_count}"
+echo "  Commands generated: ${commands_generated_count}"
+
 if [ ${#CURL_COMMANDS[@]} -eq 0 ]; then
-    echo "Warning: No curl commands were generated. This might mean no unique IPs were found from the JSON file."
+    echo "Warning: No curl commands were generated. This might mean no unique IPs were found or none were reachable."
     echo "-----------------------------------------------------"
 fi
 
